@@ -428,6 +428,7 @@ function renderCharts(data) {
 
 	// ── Chart 2: Sleep Rating ────────────────────────────────────────────────
 	// Rating of 0.0 means "not rated" in Sleep as Android — exclude those points.
+	// spanGaps: false keeps unrated nights as genuine gaps rather than interpolated lines.
 	new Chart(document.getElementById('chart-rating'), {
 		type: 'line',
 		data: {
@@ -452,7 +453,8 @@ function renderCharts(data) {
 	});
 
 	// ── Chart 3: Deep Sleep % ────────────────────────────────────────────────
-	// DeepSleep is stored as a 0–1 fraction; values < 0 mean "no data".
+	// DeepSleep is stored as a 0–1 fraction; values < 0 mean "no data" in Sleep as Android.
+	// spanGaps: false keeps sessions with no deep-sleep data as genuine gaps.
 	new Chart(document.getElementById('chart-deepsleep'), {
 		type: 'line',
 		data: {
