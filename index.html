@@ -236,11 +236,11 @@ function normalizeTime(timeStr) {
  * @returns {string} Pretty-printed JSON
  */
 function convertSleepCsvToJson(csvContents) {
-	// Normalise line endings and trim trailing whitespace
-	const normalised = csvContents.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+	// Normalize line endings and trim trailing whitespace
+	const normalized = csvContents.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
 
 	// Split the file into individual records on any newline immediately followed by "Id,"
-	const rawRecords = normalised.split(/\n(?=Id,)/);
+	const rawRecords = normalized.split(/\n(?=Id,)/);
 
 	const resultArray = [];
 
@@ -359,7 +359,7 @@ convertBtn.addEventListener('click', () => {
 		return;
 	}
 
-	showMessage('Please wait — converting…', 'blue');
+	showMessage('Please wait &mdash; converting&hellip;', 'blue');
 
 	const reader = new FileReader();
 
