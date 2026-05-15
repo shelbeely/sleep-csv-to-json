@@ -8,6 +8,8 @@
 
 <link rel="icon" href="data:image/x-icon;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQEAYAAABPYyMiAAAABmJLR0T///////8JWPfcAAAACXBIWXMAAABIAAAASABGyWs+AAAAF0lEQVRIx2NgGAWjYBSMglEwCkbBSAcACBAAAeaR9cIAAAAASUVORK5CYII=" type="image/x-icon">
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+
 <style>
 @media (prefers-color-scheme: light) {
 	:root {
@@ -157,6 +159,29 @@ p#made-by > a {
 		margin-top: 10px;
 	}
 }
+
+#charts-section {
+	margin: 30px 20px 0;
+}
+
+#charts-section h2 {
+	font-size: 1.1rem;
+	font-weight: 600;
+	margin: 0 0 20px 0;
+	padding: 0;
+}
+
+.chart-card {
+	margin-bottom: 35px;
+}
+
+.chart-card h3 {
+	font-size: 0.920rem;
+	font-weight: 600;
+	margin: 0 0 8px 0;
+	padding: 0;
+	opacity: 0.65;
+}
 </style>
 
 </head>
@@ -180,6 +205,22 @@ p#made-by > a {
 
 <p id="privacy">The conversion happens entirely in your browser — no data is ever uploaded to any server. The converter is open-source (<a href="https://github.com/shelbeely/sleep-csv-to-json" target="_blank" rel="noopener noreferrer">see the source</a>) so you can take a look yourself.</p>
 <p id="made-by">Made by <a href="https://airikr.me/lang:en" target="_blank" rel="noopener noreferrer">Erik</a>. Check out his other project, the weather service <a href="https://serenum.org/" target="_blank" rel="noopener noreferrer">Serenum</a>.</p>
+
+<section id="charts-section" style="display:none" aria-label="Sleep data charts">
+	<h2>Sleep Data Overview</h2>
+	<div class="chart-card">
+		<h3>Sleep Duration</h3>
+		<canvas id="chart-duration" role="img" aria-label="Sleep duration bar chart"></canvas>
+	</div>
+	<div class="chart-card">
+		<h3>Sleep Rating</h3>
+		<canvas id="chart-rating" role="img" aria-label="Sleep rating line chart"></canvas>
+	</div>
+	<div class="chart-card">
+		<h3>Deep Sleep</h3>
+		<canvas id="chart-deepsleep" role="img" aria-label="Deep sleep percentage line chart"></canvas>
+	</div>
+</section>
 
 <script>
 'use strict';
@@ -304,6 +345,140 @@ function downloadFile(content, filename) {
 	URL.revokeObjectURL(url);
 }
 
+// ── Chart rendering ──────────────────────────────────────────────────────────
+
+/**
+ * Parse the "From" date string used in Sleep as Android records.
+ * e.g. "15. 03. 2015 0:50" → Date(2015, 2, 15)
+ * @param {string} fromStr
+ * @returns {Date|null}
+ */
+function parseFromDate(fromStr) {
+	const match = fromStr.match(/(\d+)\.\s*(\d+)\.\s*(\d+)/);
+	if (!match) return null;
+	const [, day, month, year] = match;
+	return new Date(+year, +month - 1, +day);
+}
+
+/**
+ * Format a Date as a short human-readable label, e.g. "15 Mar".
+ * @param {Date} date
+ * @returns {string}
+ */
+function formatDateLabel(date) {
+	return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+/**
+ * Render (or re-render) the three sleep-data charts from parsed JSON records.
+ * @param {object[]} data
+ */
+function renderCharts(data) {
+	if (typeof Chart === 'undefined') return;
+
+	const sessions = data
+		.map(entry => ({
+			date:      parseFromDate(entry.From || ''),
+			hours:     parseFloat(entry.Hours),
+			rating:    parseFloat(entry.Rating),
+			deepSleep: parseFloat(entry.DeepSleep)
+		}))
+		.filter(s => s.date && !isNaN(s.hours))
+		.sort((a, b) => a.date - b.date);
+
+	if (sessions.length === 0) return;
+
+	const labels    = sessions.map(s => formatDateLabel(s.date));
+	const textColor = getComputedStyle(document.documentElement).getPropertyValue('--color').trim() || '#000';
+	const gridColor = 'rgba(128,128,128,0.2)';
+
+	const axisDefaults = {
+		ticks: { color: textColor },
+		grid:  { color: gridColor }
+	};
+
+	// Destroy any pre-existing chart instances before creating new ones
+	for (const id of ['chart-duration', 'chart-rating', 'chart-deepsleep']) {
+		const existing = Chart.getChart(id);
+		if (existing) existing.destroy();
+	}
+
+	// ── Chart 1: Sleep Duration ──────────────────────────────────────────────
+	new Chart(document.getElementById('chart-duration'), {
+		type: 'bar',
+		data: {
+			labels,
+			datasets: [{
+				label: 'Hours slept',
+				data:  sessions.map(s => +s.hours.toFixed(2)),
+				backgroundColor: 'rgba(70, 144, 246, 0.55)',
+				borderColor:     'rgba(70, 144, 246, 1)',
+				borderWidth: 1
+			}]
+		},
+		options: {
+			responsive: true,
+			plugins: { legend: { labels: { color: textColor } } },
+			scales: {
+				x: axisDefaults,
+				y: { ...axisDefaults, min: 0, title: { display: true, text: 'Hours', color: textColor } }
+			}
+		}
+	});
+
+	// ── Chart 2: Sleep Rating ────────────────────────────────────────────────
+	// Rating of 0.0 means "not rated" in Sleep as Android — exclude those points.
+	new Chart(document.getElementById('chart-rating'), {
+		type: 'line',
+		data: {
+			labels,
+			datasets: [{
+				label: 'Rating (0–5 ☆)',
+				data:  sessions.map(s => (s.rating > 0 ? +s.rating.toFixed(2) : null)),
+				borderColor:     'rgba(70, 246, 87, 1)',
+				backgroundColor: 'rgba(70, 246, 87, 0.1)',
+				tension: 0.3,
+				spanGaps: false
+			}]
+		},
+		options: {
+			responsive: true,
+			plugins: { legend: { labels: { color: textColor } } },
+			scales: {
+				x: axisDefaults,
+				y: { ...axisDefaults, min: 0, max: 5, title: { display: true, text: 'Stars', color: textColor } }
+			}
+		}
+	});
+
+	// ── Chart 3: Deep Sleep % ────────────────────────────────────────────────
+	// DeepSleep is stored as a 0–1 fraction; values < 0 mean "no data".
+	new Chart(document.getElementById('chart-deepsleep'), {
+		type: 'line',
+		data: {
+			labels,
+			datasets: [{
+				label: 'Deep sleep %',
+				data:  sessions.map(s => (s.deepSleep >= 0 ? +(s.deepSleep * 100).toFixed(1) : null)),
+				borderColor:     'rgba(180, 70, 246, 1)',
+				backgroundColor: 'rgba(180, 70, 246, 0.1)',
+				tension: 0.3,
+				spanGaps: false
+			}]
+		},
+		options: {
+			responsive: true,
+			plugins: { legend: { labels: { color: textColor } } },
+			scales: {
+				x: axisDefaults,
+				y: { ...axisDefaults, min: 0, max: 100, title: { display: true, text: '%', color: textColor } }
+			}
+		}
+	});
+
+	document.getElementById('charts-section').style.display = 'block';
+}
+
 // ── UI wiring ────────────────────────────────────────────────────────────────
 
 const fileInput  = document.getElementById('file-input');
@@ -368,6 +543,7 @@ convertBtn.addEventListener('click', () => {
 			const json = convertSleepCsvToJson(e.target.result);
 			const outName = selectedFile.name.replace(/\.csv$/i, '.json');
 			downloadFile(json, outName);
+			renderCharts(JSON.parse(json));
 			showMessage('Your file has been converted and the download has started.', 'green');
 			// Reset for next use
 			form.reset();
