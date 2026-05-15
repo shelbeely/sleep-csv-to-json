@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Convert Sleep CSV to JSON</title>
+
+<link rel="icon" href="data:image/x-icon;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQEAYAAABPYyMiAAAABmJLR0T///////8JWPfcAAAACXBIWXMAAABIAAAASABGyWs+AAAAF0lEQVRIx2NgGAWjYBSMglEwCkbBSAcACBAAAeaR9cIAAAAASUVORK5CYII=" type="image/x-icon">
+
+<style>
+@media (prefers-color-scheme: light) {
+	:root {
+		--background: #ffffff;
+		--background_button: #8ccd8e;
+		--color: #030f16;
+		--color_link: #2166cf;
+		--color_red: #970606;
+		--color_blue: #064397;
+		--color_green: #06970a;
+	}
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--background: #191c1f;
+		--background_button: #103d15;
+		--color: #f7f9fb;
+		--color_link: #659ff0;
+		--color_red: #f64646;
+		--color_blue: #4690f6;
+		--color_green: #46f657;
+	}
+}
+
+html {
+	margin: 0;
+	padding: 0;
+}
+
+body {
+	background-color: var(--background);
+	color: var(--color);
+	font-family: system-ui, 'Segoe UI', sans-serif;
+	font-size: 0.920rem;
+	font-weight: 400;
+	margin: 0 auto;
+	padding: 50px 0;
+	overflow-y: scroll;
+	width: 600px;
+}
+
+a {
+	color: var(--color_link);
+}
+
+p {
+	margin: 0;
+	padding: 5px 0;
+}
+
+input {
+	border: 0;
+	border-radius: 3px;
+	font-family: system-ui, 'Segoe UI', sans-serif;
+	font-size: 0.920rem;
+	font-weight: 400;
+	padding: 5px;
+	line-height: 15px;
+}
+
+button {
+	background-color: var(--background_button);
+	border: 0;
+	border-radius: 3px;
+	color: var(--color);
+	cursor: pointer;
+	font-family: system-ui, 'Segoe UI', sans-serif;
+	font-size: 0.920rem;
+	font-weight: 400;
+	margin-left: 10px;
+	padding: 8px 10px;
+}
+
+button:hover {
+	opacity: 0.85;
+}
+
+header {
+	font-size: 1.580rem;
+	font-weight: 700;
+	line-height: 2rem;
+	margin: 0 0 10px 0;
+	padding: 0;
+}
+
+form {
+	align-items: center;
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	margin: 30px 20px;
+}
+
+.drop-zone {
+	border: 2px dashed var(--color_link);
+	border-radius: 6px;
+	color: var(--color_link);
+	cursor: pointer;
+	margin: 0 20px 15px;
+	padding: 20px;
+	text-align: center;
+	transition: background-color 0.2s;
+	width: calc(100% - 40px - 4px);
+}
+
+.drop-zone.drag-over {
+	background-color: color-mix(in srgb, var(--color_link) 10%, transparent);
+}
+
+p#made-by {
+	margin-top: 10px;
+	opacity: .5;
+}
+
+p#made-by > a {
+	color: var(--color);
+}
+
+.message {
+	display: none;
+	margin-bottom: 15px;
+	width: 100%;
+}
+
+.color-red {
+	color: var(--color_red);
+}
+
+.color-blue {
+	color: var(--color_blue);
+}
+
+.color-green {
+	color: var(--color_green);
+}
+
+@media only screen and (max-width: 660px) {
+	body {
+		padding: 25px 30px;
+		width: calc(100% - 60px);
+	}
+}
+
+@media only screen and (max-width: 476px) {
+	button {
+		margin-top: 10px;
+	}
+}
+</style>
+
+</head>
+<body>
+
+<header>Convert sleep data CSV file to JSON</header>
+
+<p>Sleep as Android normally outputs your sleep data in CSV format. If you want to have it in a more human-readable JSON format, you can convert it here.</p>
+<p>To download your CSV file from Sleep as Android, tap <b>Backup</b> in the left menu drawer and choose <b>Export data</b>. The CSV can be found in /sleep-data/sleep-export.csv on your internal memory.</p>
+
+<div class="drop-zone" id="drop-zone" role="region" aria-label="Drop CSV file here">
+	Drag &amp; drop your CSV file here, or click to browse
+</div>
+
+<form id="convert-form" action="javascript:void(0)" autocomplete="off">
+	<p class="message" id="message"></p>
+	<input type="file" id="file-input" name="file" accept=".csv" style="display:none" aria-label="Choose CSV file">
+	<button type="button" id="choose-btn">Choose File</button>
+	<button type="button" id="convert-btn">Convert</button>
+</form>
+
+<p id="privacy">The conversion happens entirely in your browser — no data is ever uploaded to any server. The converter is open-source (<a href="https://github.com/shelbeely/sleep-csv-to-json" target="_blank" rel="noopener noreferrer">see the source</a>) so you can take a look yourself.</p>
+<p id="made-by">Made by <a href="https://airikr.me/lang:en" target="_blank" rel="noopener noreferrer">Erik</a>. Check out his other project, the weather service <a href="https://serenum.org/" target="_blank" rel="noopener noreferrer">Serenum</a>.</p>
+
+<script>
+'use strict';
+
+/**
+ * Parse a single CSV row, correctly handling double-quoted fields
+ * (including commas and escaped quotes inside them).
+ * @param {string} row
+ * @returns {string[]}
+ */
+function parseCSVRow(row) {
+	const result = [];
+	let current = '';
+	let inQuotes = false;
+
+	for (let i = 0; i < row.length; i++) {
+		const char = row[i];
+		if (char === '"') {
+			if (inQuotes && row[i + 1] === '"') {
+				current += '"';
+				i++;
+			} else {
+				inQuotes = !inQuotes;
+			}
+		} else if (char === ',' && !inQuotes) {
+			result.push(current);
+			current = '';
+		} else {
+			current += char;
+		}
+	}
+	result.push(current);
+	return result;
+}
+
+/**
+ * Normalise a time string from the header row to zero-padded "HH:mm".
+ * e.g. "0:02" → "00:02", "22:17" → "22:17"
+ * @param {string} timeStr
+ * @returns {string}
+ */
+function normalizeTime(timeStr) {
+	const colonIdx = timeStr.indexOf(':');
+	if (colonIdx < 0) return timeStr;
+	const hours = timeStr.slice(0, colonIdx).padStart(2, '0');
+	const mins  = timeStr.slice(colonIdx + 1);
+	return `${hours}:${mins}`;
+}
+
+/**
+ * Convert Sleep as Android CSV content to a JSON string.
+ * Each record may be two lines (no actigraphy) or three lines (with actigraphy + noise).
+ * @param {string} csvContents
+ * @returns {string} Pretty-printed JSON
+ */
+function convertSleepCsvToJson(csvContents) {
+	// Normalise line endings and trim trailing whitespace
+	const normalised = csvContents.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+
+	// Split the file into individual records on any newline immediately followed by "Id,"
+	const rawRecords = normalised.split(/\n(?=Id,)/);
+
+	const resultArray = [];
+
+	for (const rawRecord of rawRecords) {
+		const trimmed = rawRecord.trim();
+		if (!trimmed.startsWith('Id,')) continue;
+
+		const lines = trimmed.split('\n');
+		const headerRow      = parseCSVRow(lines[0] ?? '');
+		const valuesRow      = parseCSVRow(lines[1] ?? '');
+		const noiseValuesRow = lines[2] ? parseCSVRow(lines[2]) : [];
+
+		const entry = {};
+
+		for (let i = 0; i < headerRow.length; i++) {
+			if (i < 15) {
+				// Fixed single-value fields: Id, Tz, From, To, Sched, Hours, Rating,
+				// Comment, Framerate, Snore, Noise, Cycles, DeepSleep, LenAdjust, Geo
+				entry[headerRow[i]] = valuesRow[i] ?? '';
+			} else if (headerRow[i] !== 'Event') {
+				// Time-indexed actigraphy data
+				if (!entry.actigraphy) entry.actigraphy = [];
+				entry.actigraphy.push({
+					time: normalizeTime(headerRow[i]),
+					data: valuesRow[i] ?? ''
+				});
+
+				// Corresponding noise samples (third row, same column index)
+				if (!entry.noise) entry.noise = {};
+				const noiseVal = noiseValuesRow[i];
+				if (noiseVal) {
+					entry.noise[normalizeTime(headerRow[i])] = noiseVal;
+				}
+			} else {
+				// Event markers
+				if (!entry.events) entry.events = [];
+				entry.events.push(valuesRow[i] ?? '');
+			}
+		}
+
+		resultArray.push(entry);
+	}
+
+	return JSON.stringify(resultArray, null, 2);
+}
+
+/**
+ * Trigger a browser download of text content as a named file.
+ * @param {string} content
+ * @param {string} filename
+ */
+function downloadFile(content, filename) {
+	const blob = new Blob([content], { type: 'application/json' });
+	const url  = URL.createObjectURL(blob);
+	const a    = document.createElement('a');
+	a.href     = url;
+	a.download = filename;
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
+	URL.revokeObjectURL(url);
+}
+
+// ── UI wiring ────────────────────────────────────────────────────────────────
+
+const fileInput  = document.getElementById('file-input');
+const chooseBtn  = document.getElementById('choose-btn');
+const convertBtn = document.getElementById('convert-btn');
+const messageEl  = document.getElementById('message');
+const dropZone   = document.getElementById('drop-zone');
+const form       = document.getElementById('convert-form');
+
+let selectedFile = null;
+
+function showMessage(text, type) {
+	messageEl.textContent = text;
+	messageEl.className   = `message color-${type}`;
+	messageEl.style.display = 'block';
+}
+
+function setFile(file) {
+	if (!file) return;
+	selectedFile = file;
+	dropZone.textContent = `Selected: ${file.name}`;
+	messageEl.style.display = 'none';
+}
+
+chooseBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', () => {
+	setFile(fileInput.files[0]);
+});
+
+// Drag-and-drop
+dropZone.addEventListener('click', () => fileInput.click());
+
+dropZone.addEventListener('dragover', (e) => {
+	e.preventDefault();
+	dropZone.classList.add('drag-over');
+});
+
+dropZone.addEventListener('dragleave', () => {
+	dropZone.classList.remove('drag-over');
+});
+
+dropZone.addEventListener('drop', (e) => {
+	e.preventDefault();
+	dropZone.classList.remove('drag-over');
+	const file = e.dataTransfer.files[0];
+	if (file) setFile(file);
+});
+
+convertBtn.addEventListener('click', () => {
+	if (!selectedFile) {
+		showMessage('Please choose a file first.', 'red');
+		return;
+	}
+
+	showMessage('Please wait — converting…', 'blue');
+
+	const reader = new FileReader();
+
+	reader.onload = (e) => {
+		try {
+			const json = convertSleepCsvToJson(e.target.result);
+			const outName = selectedFile.name.replace(/\.csv$/i, '.json');
+			downloadFile(json, outName);
+			showMessage('Your file has been converted and the download has started.', 'green');
+			// Reset for next use
+			form.reset();
+			selectedFile = null;
+			dropZone.textContent = 'Drag & drop your CSV file here, or click to browse';
+		} catch (err) {
+			showMessage(`Conversion failed: ${err.message}`, 'red');
+		}
+	};
+
+	reader.onerror = () => {
+		showMessage('Could not read the file. Please try again.', 'red');
+	};
+
+	reader.readAsText(selectedFile, 'UTF-8');
+});
+</script>
+
+</body>
+</html>
